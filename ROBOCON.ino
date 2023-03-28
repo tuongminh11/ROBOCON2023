@@ -175,7 +175,6 @@ void setup()
 
     //tft
     tft.init(320, 240);     
-    tft.drawRGBBitmap(190, 0, robocon2023, 50, 50);
     //mpu
     mpu.begin();
 }
@@ -359,9 +358,11 @@ void readMotor()
 }
 
 void lcd() {
-    tft.setRotation(2);
-    //tft.clear();
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setRotation(3);
+    tft.drawRGBBitmap(190, 0, robocon2023, 50, 50);
     tft.setTextSize(2);
+    tft.setTextColor(ST77XX_WHITE);
     tft.setCursor(2, 2);
     tft.print(error1);
     tft.print(" ");
@@ -469,11 +470,10 @@ void loop()
         unsigned long now = millis();
         if (now - last >= 50)
         {   
-            last = now;
+            last = now;    lcd();
             processHoverboard(controllerData0);
         }
     }
-    lcd();
     // while (fl.ReadNUC)
     // {
     //     readNUC();
