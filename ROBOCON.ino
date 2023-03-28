@@ -14,7 +14,7 @@
 #define STEER_MAX 100      // [-] Maximum steer
 #define STEER_MIN 10      // [-] Maximum steer
 #define STEER_STEP 10            // [-] Steerstep
-//okokoko
+
 typedef struct {
     uint16_t start;
     int16_t steer;
