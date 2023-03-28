@@ -3,7 +3,11 @@
 #include <Adafruit_PCF8574.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_GFX.h>       // include Adafruit graphics library
-#include <Adafruit_ILI9341.h>   // include Adafruit ILI9341 TFT library 
+#include <Adafruit_ST7789.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include "roboconIcon.h"
 
 #define HOVER_SERIAL_BAUD 115200 // [-] Baud rate for HoverSerial (used to communicate with the hoverboard)
 #define SERIAL_BAUD 115200       // [-] Baud rate for built-in Serial (used for the Serial Monitor)
@@ -64,7 +68,7 @@ uint16_t maxSteer;
 #define TFT_CS    5    
 #define TFT_RST   15    
 #define TFT_DC    14     
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 // const uint8_t addressPCF = 0x20;  //
 // const uint8_t addressPCF2 = 0x00; //
@@ -98,6 +102,10 @@ TaskHandle_t Task2;
 
 PS2X ps2x_R; // create PS2 1
 PS2X ps2x_W; //PS2 2
+
+Adafruit_MPU6050 mpu;
+
+sensors_event_t a, g, temp;
 
 void IRAM_ATTR readSensor()
 {
@@ -166,7 +174,10 @@ void setup()
     Serial.println(type_W);
 
     //tft
-    tft.begin();
+    tft.init(320, 240);     
+    tft.drawRGBBitmap(190, 0, robocon2023, 50, 50);
+    //mpu
+    mpu.begin();
 }
 
 void pressTypeButton(PS2X ps2x, byte type)
@@ -350,7 +361,6 @@ void readMotor()
 void lcd() {
     tft.setRotation(2);
     //tft.clear();
-    tft.fillScreen(ILI9341_BLACK);
     tft.setTextSize(2);
     tft.setCursor(2, 2);
     tft.print(error1);
@@ -364,7 +374,12 @@ void lcd() {
     tft.print("Steer "); tft.println(setSteer);
     tft.print("maxsp "); tft.println(maxSpeed); 
     tft.print("maxst "); tft.println(maxSteer); 
-    tft.print(sensorState[0], BIN);
+    tft.println(sensorState[0], BIN);
+    tft.print("Gia toc x: ");tft.println(a.acceleration.x);
+    tft.print("Gia toc y: ");tft.println(a.acceleration.y);
+    tft.print("Gia toc goc x: ");tft.println(a.gyro.x);
+    tft.print("Gia toc goc y: ");tft.println(a.gyro.y);
+    tft.print("Nhiet do: ");tft.println(temp.temperature);
 
 }
 
@@ -424,6 +439,7 @@ void loop()
     //     sensorState[0] = pcf1.digitalReadByte();
     //     fl.ReadSensor = 0;
     // }
+    mpu.getEvent(&a, &g, &temp);
     if(type_R == 1 || type_W == 1){
         ps2x_R.read_gamepad(false, vibrate);
         ps2x_W.read_gamepad(false, vibrate);
@@ -451,13 +467,13 @@ void loop()
         // }
     }
         unsigned long now = millis();
-        if (now - last >= 100)
+        if (now - last >= 50)
         {   
             last = now;
-            lcd();
             processHoverboard(controllerData0);
         }
     }
+    lcd();
     // while (fl.ReadNUC)
     // {
     //     readNUC();
