@@ -179,17 +179,38 @@ void setup()
     mpu.begin();
 }
 
+bool pad = 0;
 void pressTypeButton(PS2X ps2x, byte type)
 {
 
-    if (ps2x.Button(PSB_PAD_RIGHT))
+    if (ps2x.Button(PSB_PAD_RIGHT)) {
+        setSpeed = 0;
+        setSteer += 10;
+        if(setSteer >= maxSteer) { setSteer = maxSteer;}
         Serial.println("1");
-    if (ps2x.Button(PSB_PAD_UP))
+        pad = 1;
+    }
+    if (ps2x.Button(PSB_PAD_UP)) {
+        setSteer = 0;
+        setSpeed += 30;
+        if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
         Serial.println("2");
-    if (ps2x.Button(PSB_PAD_DOWN))
+        pad = 1;
+    }
+    if (ps2x.Button(PSB_PAD_DOWN)) {
+        setSpeed -= 30;
+        if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
+        setSteer = 0;//MAXSTEER;
         Serial.println("3");
-    if (ps2x.Button(PSB_PAD_LEFT))
+        pad = 1;
+    }
+    if (ps2x.Button(PSB_PAD_LEFT)) {
+        setSpeed = 0;
+        setSteer -= 10;
+        if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
         Serial.println("4");
+        pad = 1;
+    }
     if (ps2x.NewButtonState()) {
         if (ps2x.Button(PSB_L2)) {
             Serial.println("5");
@@ -333,7 +354,6 @@ void processHoverboard(uint8_t data[4])
     setSpeed = map(y, 0, 255, maxSpeed, -maxSpeed);
     if(setSpeed == -1) setSpeed = 0;
     setSteer = map(x, 0, 255, -maxSteer, maxSteer);
-    loadToHover(setSpeed,setSteer);
 }
 
 void readController()
@@ -376,12 +396,11 @@ void lcd() {
     tft.print("maxsp "); tft.println(maxSpeed); 
     tft.print("maxst "); tft.println(maxSteer); 
     tft.println(sensorState[0], BIN);
-    tft.print("Gia toc x: ");tft.println(a.acceleration.x);
-    tft.print("Gia toc y: ");tft.println(a.acceleration.y);
-    tft.print("Gia toc goc x: ");tft.println(a.gyro.x);
-    tft.print("Gia toc goc y: ");tft.println(a.gyro.y);
+    tft.print("Goc x: ");tft.println(a.acceleration.x);
+    tft.print("Goc y: ");tft.println(a.acceleration.y);
+    tft.print("Gia toc goc x: ");tft.println(g.gyro.x);
+    tft.print("Gia toc goc y: ");tft.println(g.gyro.y);
     tft.print("Nhiet do: ");tft.println(temp.temperature);
-
 }
 
 // Task1code:
@@ -426,22 +445,13 @@ void lcd() {
 // }
 
 unsigned long last = 0;
+unsigned long lastOfLCD = 0;
+
 void loop()
 {
-    // while (fl.ReadSensor || fl.ReadHover || fl.ReadMotor)
-    // {
-    //     loadToLCD();
-    //     loadToNUC();
-    //     fl.ReadSensor = 0;
-    //     fl.ReadHover = 0;
-    //     fl.ReadMotor = 0;
-    // }    
-    // if(fl.ReadSensor) {
-    //     sensorState[0] = pcf1.digitalReadByte();
-    //     fl.ReadSensor = 0;
-    // }
     mpu.getEvent(&a, &g, &temp);
     if(type_R == 1 || type_W == 1){
+        pad = 0;
         ps2x_R.read_gamepad(false, vibrate);
         ps2x_W.read_gamepad(false, vibrate);
         readController();
@@ -468,11 +478,16 @@ void loop()
         // }
     }
         unsigned long now = millis();
-        if (now - last >= 50)
+        if(pad == 0) processHoverboard(controllerData0);
+        if (now - last >= 100)
         {   
-            last = now;    lcd();
-            processHoverboard(controllerData0);
+            last = now;    
+            loadToHover(setSpeed, setSteer);
         }
+    }
+    if (millis() - lastOfLCD >= 1000){
+        lastOfLCD = millis();
+        lcd();
     }
     // while (fl.ReadNUC)
     // {
