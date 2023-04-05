@@ -71,10 +71,10 @@ uint16_t maxSteer;
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 const uint8_t addressPCF = 0x20;  //
-// const uint8_t addressPCF2 = 0x00; //
+const uint8_t addressPCF2 = 0x00; //
 
 const uint8_t ESP_IRQ = 27;  //, ESP_IRQ2 = 11; // ngắt của readsensor
-Adafruit_PCF8574 pcf1;//, pcf2;
+Adafruit_PCF8574 pcf1, pcf2;
 
 struct Flag {
     bool ReadMotor, ReadHover, ReadSensor, ReadNUC, ReadController;
@@ -160,12 +160,14 @@ void setup()
 
     // PCF8574
     if (!pcf1.begin(addressPCF, &Wire)) {
-        Serial.println("Couldn't find PCF8574");
+        Serial.println("Couldn't find PCF8574 1");
     }
-    
+    if (!pcf1.begin(addressPCF2, &Wire)) {
+        Serial.println("Couldn't find PCF8574 1");
+    }
     for (uint8_t p = 0; p < 8; p++) {
         pcf1.pinMode(p, INPUT_PULLUP);
-        //pcf2.pinMode(p, INPUT_PULLUP);
+        pcf2.pinMode(p, OUTPUT);
     }
     pinMode(ESP_IRQ, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ESP_IRQ), readSensor, FALLING);
@@ -242,8 +244,7 @@ void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed) {
 }
 
 bool pad = 0;
-void pressTypeButton(PS2X ps2x, byte type)
-{
+void pressTypeButton(PS2X ps2x, byte type) {
 
     // if (ps2x.Button(PSB_PAD_RIGHT)) {
     //     setSpeed = 0;
@@ -354,8 +355,6 @@ void pressTypeButton(PS2X ps2x, byte type)
         }
     }
 }
-
-//
 
 void loadToHover(int16_t uSteer, int16_t uSpeed)
 {
@@ -476,6 +475,21 @@ void loadToMotor()
 
 void readMotor()
 {
+}
+
+void setRelay(uint8_t pinA, uint8_t pinB, uint8_t St) {
+    if(St == 1) {
+        pcf2.digitalWrite(pinA, HIGH);
+        pcf2.digitalWrite(pinB, LOW);
+    }
+    if(St == 2) {
+        pcf2.digitalWrite(pinA, LOW);
+        pcf2.digitalWrite(pinB, HIGH);
+    }
+    if(St == 0) {
+        pcf2.digitalWrite(pinA, LOW);
+        pcf2.digitalWrite(pinB, LOW);
+    }
 }
 
 void lcd() {
