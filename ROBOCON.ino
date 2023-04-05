@@ -1,4 +1,4 @@
-#include <SoftwareSerial.h>
+
 #include <PS2X_lib.h>
 #include <Adafruit_PCF8574.h>
 #include <SoftwareSerial.h>
@@ -70,11 +70,11 @@ uint16_t maxSteer;
 #define TFT_DC    14     
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
-// const uint8_t addressPCF = 0x20;  //
+const uint8_t addressPCF = 0x20;  //
 // const uint8_t addressPCF2 = 0x00; //
 
 const uint8_t ESP_IRQ = 27;  //, ESP_IRQ2 = 11; // ngắt của readsensor
-// Adafruit_PCF8574 pcf1;//, pcf2;
+Adafruit_PCF8574 pcf1;//, pcf2;
 
 struct Flag {
     bool ReadMotor, ReadHover, ReadSensor, ReadNUC, ReadController;
@@ -107,9 +107,28 @@ Adafruit_MPU6050 mpu;
 
 sensors_event_t a, g, temp;
 
+struct Motor_Command{
+	uint16_t Start ; //0xABCD
+	uint8_t Motor; //stt motor i=1-6, config PID i+10
+	uint8_t on; //on off
+	uint8_t PID; //
+	int16_t Value;//9999
+	uint8_t Checksum;
+};
+Motor_Command command;
+uint8_t motorIN; //stt motor
+uint8_t enIN; //on off
+uint8_t pidIN; //
+int16_t speedIN;//9999
+uint16_t SpUp = 100; //speed Up
+uint16_t SpRt = 100; //speed Rotate
+uint16_t SpFi = 1000;//speed fire
+uint16_t SpPu = 100; //speed pull
+uint8_t gear = 0;
+
 void IRAM_ATTR readSensor()
 {
-    // sensorState[0] = pcf1.digitalReadByte();
+    //11111111
     // sensorState[1] = pcf2.digitalReadByte();
     fl.ReadSensor = 1;
 }
@@ -140,16 +159,16 @@ void setup()
     // delay(500);
 
     // PCF8574
-    // if (!pcf1.begin(addressPCF, &Wire)) {
-    //     Serial.println("Couldn't find PCF8574");
-    // }
+    if (!pcf1.begin(addressPCF, &Wire)) {
+        Serial.println("Couldn't find PCF8574");
+    }
     
-    // for (uint8_t p = 0; p < 8; p++) {
-    //     pcf1.pinMode(p, INPUT_PULLUP);
-    //     //pcf2.pinMode(p, INPUT_PULLUP);
-    // }
-    // pinMode(ESP_IRQ, INPUT_PULLUP);
-    // attachInterrupt(digitalPinToInterrupt(ESP_IRQ), readSensor, FALLING);
+    for (uint8_t p = 0; p < 8; p++) {
+        pcf1.pinMode(p, INPUT_PULLUP);
+        //pcf2.pinMode(p, INPUT_PULLUP);
+    }
+    pinMode(ESP_IRQ, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ESP_IRQ), readSensor, FALLING);
     // attachInterrupt(digitalPinToInterrupt(ESP_IRQ2), readSensor, CHANGE);
 
     // HOVERBOARD
@@ -174,84 +193,170 @@ void setup()
     Serial.println(type_W);
 
     //tft
-    tft.init(320, 240);     
+    tft.init(320, 240); // chả biết này hàm gì, chắc là khởi tạo
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setRotation(3);
+    tft.drawRGBBitmap(270, 0, robocon2023, 50, 50);
+    tft.setTextSize(2);
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(2, 30);
+    tft.print("Speed "); // tft.println(setSpeed);
+    tft.setCursor(2, 50);
+    tft.print("Steer "); // tft.println(setSteer);
+    tft.setCursor(2, 70);
+    tft.print("maxsp "); // tft.println(maxSpeed);
+    tft.setCursor(2, 90);
+    tft.print("maxst "); // tft.println(maxSteer);
+    tft.setCursor(2, 110);
+    // tft.println(sensorState[0], BIN);
+    tft.setCursor(2, 130);
+    tft.println("Sp Up: ");         // tft.println(a.acceleration.x);
+    tft.setCursor(2, 150);
+    tft.println("Sp Rt: ");         // tft.println(a.acceleration.y);
+    tft.setCursor(2, 170);
+    tft.println("Sp Fi: "); // tft.println(g.gyro.x);
+    tft.setCursor(2, 190);
+    tft.println("Sp Pu: "); // tft.println(g.gyro.y);
+    tft.setCursor(2, 210);
+    tft.println("Gear : ");      // tft.println(temp.temperature);
+
     //mpu
     mpu.begin();
+
+    //stm32
+    Serial2.begin(9600);
+    speedIN = 0;
+    pidIN = 1;
+    enIN = 1;
+    motorIN = 1;
+}
+
+void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed) {
+    command.Start = 0xABCD;
+    command.Motor = motor;
+    command.on = EN;
+    command.PID = pidEN;
+    command.Value = speed;
+    command.Checksum = 16;
+    Serial2.write((uint8_t *)&command, sizeof(command));
 }
 
 bool pad = 0;
 void pressTypeButton(PS2X ps2x, byte type)
 {
 
-    if (ps2x.Button(PSB_PAD_RIGHT)) {
-        setSpeed = 0;
-        setSteer += 10;
-        if(setSteer >= maxSteer) { setSteer = maxSteer;}
-        Serial.println("1");
-        pad = 1;
+    // if (ps2x.Button(PSB_PAD_RIGHT)) {
+    //     setSpeed = 0;
+    //     setSteer += 10;
+    //     if(setSteer >= maxSteer) { setSteer = maxSteer;}
+    //     Serial.println("1");
+    //     pad = 1;
+    // }
+    // if (ps2x.Button(PSB_PAD_UP)) {
+    //     setSteer = 0;
+    //     setSpeed += 30;
+    //     if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
+    //     Serial.println("2");
+    //     pad = 1;
+    // }
+    // if (ps2x.Button(PSB_PAD_DOWN)) {
+    //     setSpeed -= 30;
+    //     if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
+    //     setSteer = 0;//MAXSTEER;
+    //     Serial.println("3");
+    //     pad = 1;
+    // }
+    // if (ps2x.Button(PSB_PAD_LEFT)) {
+    //     setSpeed = 0;
+    //     setSteer -= 10;
+    //     if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
+    //     Serial.println("4");
+    //     pad = 1;
+    // }
+
+    if (ps2x.Button(PSB_L2)) {
+        if (!(sensorState[0] || 0b1111110))
+            loadToMB(1, 1, 1, 0);
+        else 
+            loadToMB(1, 1, 1, -SpRt);
     }
-    if (ps2x.Button(PSB_PAD_UP)) {
-        setSteer = 0;
-        setSpeed += 30;
-        if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
-        Serial.println("2");
-        pad = 1;
+    else loadToMB(1, 0, 1, 0);
+    if (ps2x.Button(PSB_R2)) {
+        if(!(sensorState[0] || 0b11111011))
+            loadToMB(2, 1, 1, 0);
+        else
+            loadToMB(2, 1, 1, -SpUp);
     }
-    if (ps2x.Button(PSB_PAD_DOWN)) {
-        setSpeed -= 30;
-        if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
-        setSteer = 0;//MAXSTEER;
-        Serial.println("3");
-        pad = 1;
+    else loadToMB(2, 0, 1, 0);
+    if (ps2x.Button(PSB_L1)) {
+        if(!(sensorState[0] || 0b11111101)) 
+            loadToMB(1, 1, 1, 0);
+        else 
+            loadToMB(1, 1, 1, SpRt);       
     }
-    if (ps2x.Button(PSB_PAD_LEFT)) {
-        setSpeed = 0;
-        setSteer -= 10;
-        if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
-        Serial.println("4");
-        pad = 1;
+    else loadToMB(1, 0, 1, 0);
+    if (ps2x.Button(PSB_R1)) {
+        if(!(sensorState[0] || 0b11110111))
+            loadToMB(2, 1, 1, 0);
+        else
+            loadToMB(2, 1, 1, SpUp);
     }
+    else loadToMB(2, 0, 1, 0);
+
     if (ps2x.NewButtonState()) {
-        if (ps2x.Button(PSB_L2)) {
-            Serial.println("5");
+        if (ps2x.Button(PSB_R3)) {
+            //Code here 
+            gear++;
+            gear= gear%5;
+            loadToMB(3, 1, 1, SpFi/4*gear);
         }
-        if (ps2x.Button(PSB_R2))
-            Serial.println("6");
-        if (ps2x.Button(PSB_L1))
-            Serial.println("7");
-        if (ps2x.Button(PSB_R1))
-            Serial.println("8");
-        if (ps2x.Button(PSB_TRIANGLE)){
-            Serial.println("9");
-            if(maxSpeed + SPEED_STEP <= SPEED_MAX) {
-                maxSpeed += SPEED_STEP;
-            }
-            else    maxSpeed = SPEED_MAX;
-        }
-        if (ps2x.Button(PSB_CIRCLE)) {
-            Serial.println("10");
+        if (ps2x.Button(PSB_PAD_RIGHT)) {
             if(maxSteer + STEER_STEP <= STEER_MAX) {
                 maxSteer += STEER_STEP;
             }
             else    maxSteer = STEER_MAX;
         }
-        if (ps2x.Button(PSB_CROSS)) {
-            Serial.println("11");
+        if (ps2x.Button(PSB_PAD_UP)) {
+            if(maxSpeed + SPEED_STEP <= SPEED_MAX) {
+                maxSpeed += SPEED_STEP;
+            }
+            else    maxSpeed = SPEED_MAX;
+        }
+        if (ps2x.Button(PSB_PAD_DOWN)) {
             if(maxSpeed - SPEED_STEP >= SPEED_MIN) {
                 maxSpeed -= SPEED_STEP;
             }
             else    maxSpeed = SPEED_MIN;
         }
-        if (ps2x.Button(PSB_SQUARE)) {
-            Serial.println("12");
+        if (ps2x.Button(PSB_PAD_LEFT)) {
             if(maxSteer - STEER_STEP >= STEER_MIN) {
                 maxSteer -= STEER_STEP;
             }
             else    maxSteer = STEER_MIN;
         }
+        if (ps2x.Button(PSB_TRIANGLE)){
+            if(SpFi + 100 <= 9999) {
+                SpFi += 100;
+            }
+            else SpFi = 9999;
+        }
+        if (ps2x.Button(PSB_CIRCLE)) {
+            Serial.println("10");
+        }
+        if (ps2x.Button(PSB_CROSS)) {
+            if(SpFi - 100 >= -9999) {
+                SpFi -= 100;
+            }
+            else  SpFi = -9999;
+        }
+        if (ps2x.Button(PSB_SQUARE)) {
+            Serial.println("12");
+        }
     }
 }
- 
+
+//
+
 void loadToHover(int16_t uSteer, int16_t uSpeed)
 {
     // Create command
@@ -343,10 +448,6 @@ void readNUC()
 {
 }
 
-void loadToLCD()
-{
-}
-
 void processHoverboard(uint8_t data[4])
 {
     uint8_t x = data[1];
@@ -378,29 +479,50 @@ void readMotor()
 }
 
 void lcd() {
-    tft.fillScreen(ST77XX_BLACK);
-    tft.setRotation(3);
-    tft.drawRGBBitmap(190, 0, robocon2023, 50, 50);
-    tft.setTextSize(2);
     tft.setTextColor(ST77XX_WHITE);
+    tft.fillRect(2, 2, 50, 20, ST77XX_BLACK);
     tft.setCursor(2, 2);
     tft.print(error1);
-    tft.print(" ");
+    tft.fillRect(20, 2, 50, 20, ST77XX_BLACK);
+    tft.setCursor(20, 2);
     tft.print(error2);
-    tft.print(" ");
+    tft.fillRect(40, 2, 50, 20, ST77XX_BLACK);
+    tft.setCursor(40, 2);
     tft.print(type_R);
-    tft.print(" ");
+    tft.fillRect(60, 2, 50, 20, ST77XX_BLACK);
+    tft.setCursor(60, 2);
     tft.println(type_W);
-    tft.print("Speed "); tft.println(setSpeed);
-    tft.print("Steer "); tft.println(setSteer);
-    tft.print("maxsp "); tft.println(maxSpeed); 
-    tft.print("maxst "); tft.println(maxSteer); 
-    tft.println(sensorState[0], BIN);
-    tft.print("Goc x: ");tft.println(a.acceleration.x);
-    tft.print("Goc y: ");tft.println(a.acceleration.y);
-    tft.print("Gia toc goc x: ");tft.println(g.gyro.x);
-    tft.print("Gia toc goc y: ");tft.println(g.gyro.y);
-    tft.print("Nhiet do: ");tft.println(temp.temperature);
+    //data
+    tft.fillRect(70, 30, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 30);
+    tft.print(setSpeed);//speed
+    tft.fillRect(70, 50, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 50);
+    tft.print(setSteer);//steer
+    tft.fillRect(70, 70, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 70);
+    tft.print(maxSpeed);//mspeed
+    tft.fillRect(70, 90, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 90);
+    tft.print(maxSteer);//msteer
+    tft.setCursor(2, 110);
+    tft.fillRect(2, 110, 120, 20, ST77XX_BLACK);
+    tft.print(sensorState[0], BIN);
+    tft.fillRect(70, 130, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 130);
+    tft.print(SpUp);//goc x
+    tft.fillRect(70, 150, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70, 150);
+    tft.print(SpRt);//goc y
+    tft.fillRect(70, 170, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70,170);
+    tft.print(SpFi);//gia toc x
+    tft.fillRect(70, 190, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70,190);
+    tft.print(SpPu);//gia toc y
+    tft.fillRect(700, 210, 50, 20, ST77XX_BLACK);
+    tft.setCursor(70,210);
+    tft.print(gear);//nhiet do
 }
 
 // Task1code:
@@ -447,9 +569,15 @@ void lcd() {
 unsigned long last = 0;
 unsigned long lastOfLCD = 0;
 
-void loop()
-{
+void loop() {
     mpu.getEvent(&a, &g, &temp);
+
+    // while(Serial.available() > 0){
+    //     String command = Serial.readString();
+    //     String funccode = command.substring(0,command.indexOf(':'));
+    //     String send_value = command.substring(command.indexOf(':')+1);
+    // }
+
     if(type_R == 1 || type_W == 1){
         pad = 0;
         ps2x_R.read_gamepad(false, vibrate);
@@ -477,15 +605,15 @@ void loop()
         // }
         // }
     }
-        unsigned long now = millis();
-        if(pad == 0) processHoverboard(controllerData0);
-        if (now - last >= 100)
-        {   
-            last = now;    
-            loadToHover(setSpeed, setSteer);
-        }
     }
-    if (millis() - lastOfLCD >= 1000){
+    unsigned long now = millis();
+    if(pad == 0) processHoverboard(controllerData0);
+    if (now - last >= 100)
+    {   
+        last = now;    
+        loadToHover(setSpeed, setSteer);
+    }
+    if (millis() - lastOfLCD >= 100){
         lastOfLCD = millis();
         lcd();
     }
@@ -494,7 +622,9 @@ void loop()
     //     readNUC();
     // }
 
-    // fl.ReadSensor = 1;
+    if (fl.ReadSensor = 1) 
+    sensorState[0] = pcf1.digitalReadByte();
+    fl.ReadSensor = 0;
     // // loadToHover();
     readHover();
     // fl.ReadHover = 1;
