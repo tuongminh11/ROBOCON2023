@@ -82,6 +82,7 @@ struct Flag {
 
 // biến trung gian
 uint8_t sensorState[2];
+uint8_t prvSensor[2];
 
 struct NUC_DATA {
 };
@@ -112,18 +113,18 @@ struct Motor_Command{
 	uint8_t Motor; //stt motor i=1-6, config PID i+10
 	uint8_t on; //on off
 	uint8_t PID; //
-	int16_t Value;//9999
+	int16_t Value;//999
 	uint8_t Checksum;
 };
 Motor_Command command;
 uint8_t motorIN; //stt motor
 uint8_t enIN; //on off
 uint8_t pidIN; //
-int16_t speedIN;//9999
-uint16_t SpUp = 100; //speed Up
-uint16_t SpRt = 100; //speed Rotate
-uint16_t SpFi = 1000;//speed fire
-uint16_t SpPu = 100; //speed pull
+int16_t speedIN;//999
+int16_t SpUp = 500; //speed Up
+int16_t SpRt = 500; //speed Rotate
+int16_t SpFi = 100;//speed fire
+int16_t SpPu = 500; //speed pull
 uint8_t gear = 0;
 
 void IRAM_ATTR readSensor()
@@ -162,12 +163,12 @@ void setup()
     if (!pcf1.begin(addressPCF, &Wire)) {
         Serial.println("Couldn't find PCF8574 1");
     }
-    // if (!pcf1.begin(addressPCF2, &Wire)) {
-    //     Serial.println("Couldn't find PCF8574 1");
-    // }
+//    if (!pcf1.begin(addressPCF2, &Wire)) {
+//        Serial.println("Couldn't find PCF8574 1");
+//    }
     for (uint8_t p = 0; p < 8; p++) {
         pcf1.pinMode(p, INPUT_PULLUP);
-        //pcf2.pinMode(p, OUTPUT);
+//        pcf2.pinMode(p, OUTPUT);
     }
     pinMode(ESP_IRQ, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ESP_IRQ), readSensor, FALLING);
@@ -231,15 +232,17 @@ void setup()
     pidIN = 1;
     enIN = 1;
     motorIN = 1;
+
+    //loadToMB(1, 1, 0, -500);
 }
 
-void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed) {
+void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed, uint8_t acc = 20) {
     command.Start = 0xABCD;
     command.Motor = motor;
     command.on = EN;
     command.PID = pidEN;
     command.Value = speed;
-    command.Checksum = 16;
+    command.Checksum = acc;
     Serial2.write((uint8_t *)&command, sizeof(command));
 }
 
@@ -275,41 +278,63 @@ void pressTypeButton(PS2X ps2x, byte type) {
     //     pad = 1;
     // }
 
-    if (ps2x.Button(PSB_L2)) {
-        if (!(sensorState[0] || 0b1111110))
-            loadToMB(1, 1, 1, 0);
-        else 
-            loadToMB(1, 1, 1, -SpRt);
-    }
-    else loadToMB(1, 0, 1, 0);
-    if (ps2x.Button(PSB_R2)) {
-        if(!(sensorState[0] || 0b11111011))
-            loadToMB(2, 1, 1, 0);
-        else
-            loadToMB(2, 1, 1, -SpUp);
-    }
-    else loadToMB(2, 0, 1, 0);
-    if (ps2x.Button(PSB_L1)) {
-        if(!(sensorState[0] || 0b11111101)) 
-            loadToMB(1, 1, 1, 0);
-        else 
-            loadToMB(1, 1, 1, SpRt);       
-    }
-    else loadToMB(1, 0, 1, 0);
-    if (ps2x.Button(PSB_R1)) {
-        if(!(sensorState[0] || 0b11110111))
-            loadToMB(2, 1, 1, 0);
-        else
-            loadToMB(2, 1, 1, SpUp);
-    }
-    else loadToMB(2, 0, 1, 0);
+//    if (ps2x.Button(PSB_L2)) {
+//        if (!(sensorState[0] || 0b1111110))
+//            loadToMB(6, 1, 0, 0);
+//        else 
+//            loadToMB(6, 1, 0, -SpRt);
+//    }
+//    else 
+//    {
+//      loadToMB(6, 1, 0, 0);
+//    }
+//    if (ps2x.ButtonPressed(PSB_R2)) {
+//        if(!(sensorState[0] || 0b11111011))
+//            loadToMB(1, 1, 0, 0);
+//        else
+//            loadToMB(1, 1, 0, -500);
+//    }
+//    else {
+//      loadToMB(1, 1, 0, 0);
+//    }
+//    if (ps2x.Button(PSB_L1)) {
+//        if(!(sensorState[0] || 0b11111101)) 
+//            loadToMB(6, 1, 0, 0);
+//        else 
+//            loadToMB(6, 1, 0, SpRt);       
+//    }
+//    else {
+//      loadToMB(6, 1, 0, 0);
+//    }
+//    if (ps2x.Button(PSB_R1)) {
+//        if(!(sensorState[0] || 0b11110111))
+//            loadToMB(1, 1, 0, 0);
+//        else
+//            loadToMB(1, 1, 0, SpUp);
+//    }
+//    else {
+//      loadToMB(1, 1, 0, 0);
+//    }
+//                               
 
+
+    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) loadToMB(1, 1, 0, -SpUp, 255);
+    if(ps2x.ButtonReleased(PSB_R2)) loadToMB(1, 0, 0, 0);
+
+    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000))) loadToMB(1, 1, 0, SpUp, 255);
+    if(ps2x.ButtonReleased(PSB_R1)) loadToMB(1, 0, 0, 0);
+
+    if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & 0b00000001))) loadToMB(6, 1, 0, -SpRt, 255);
+    if(ps2x.ButtonReleased(PSB_L2)) loadToMB(6, 0, 0, 0);
+
+    if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & 0b00000010))) loadToMB(6, 1, 0, SpRt, 255);
+    if(ps2x.ButtonReleased(PSB_L1)) loadToMB(6, 0, 0, 0);
     if (ps2x.NewButtonState()) {
         if (ps2x.Button(PSB_R3)) {
-            // //Code here 
-            // gear++;
-            // gear= gear%5;
-            // loadToMB(3, 1, 1, SpFi/4*gear);
+            //Code here 
+            gear++;
+            gear= gear%5;
+            loadToMB(5, 1, 0, SpFi/4*gear);
         }
         if (ps2x.Button(PSB_PAD_RIGHT)) {
             if(maxSteer + STEER_STEP <= STEER_MAX) {
@@ -336,21 +361,23 @@ void pressTypeButton(PS2X ps2x, byte type) {
             else    maxSteer = STEER_MIN;
         }
         if (ps2x.Button(PSB_TRIANGLE)){
-            if(SpFi + 100 <= 9999) {
+            if(SpFi + 100 <= 999) {
                 SpFi += 100;
             }
-            else SpFi = 9999;
+            else SpFi = 999;
             loadToMB(3, 1, 0, SpFi);
+            loadToMB(4, 1, 0, SpFi);
         }
         if (ps2x.Button(PSB_CIRCLE)) {
             Serial.println("10");
         }
         if (ps2x.Button(PSB_CROSS)) {
-            if(SpFi - 100 >= -9999) {
+            if(SpFi - 100 >= -999) {
                 SpFi -= 100;
             }
-            else  SpFi = -9999;
+            else  SpFi = -999;
             loadToMB(3, 1, 0, SpFi);
+            loadToMB(4, 1, 0, SpFi);
         }
         if (ps2x.Button(PSB_SQUARE)) {
             Serial.println("12");
@@ -593,7 +620,16 @@ void loop() {
     //     String funccode = command.substring(0,command.indexOf(':'));
     //     String send_value = command.substring(command.indexOf(':')+1);
     // }
-
+    if (fl.ReadSensor == 1){
+        prvSensor[0] = sensorState[0];
+        sensorState[0] = pcf1.digitalReadByte();
+        if((prvSensor[0] & 0b00000100) && !(sensorState[0] & 0b00000100)) loadToMB(1, 0, 0, 0);
+        if((prvSensor[0] & 0b00001000) && !((sensorState[0] & 0b00001000))) loadToMB(1, 0, 0, 0);
+        if((prvSensor[0] & 0b00000010) && !((sensorState[0] & 0b00000010))) loadToMB(6, 0, 0, 0);
+        if((prvSensor[0] & 0b00000001) && !((sensorState[0] & 0b00000001))) loadToMB(6, 0, 0, 0);
+        fl.ReadSensor = 0;
+    //Serial.println(sensorState[0], BIN);
+    }
     if(type_R == 1 || type_W == 1){
         pad = 0;
         ps2x_R.read_gamepad(false, vibrate);
@@ -637,14 +673,8 @@ void loop() {
     // {
     //     readNUC();
     // }
-
-    if (fl.ReadSensor = 1) 
-    sensorState[0] = pcf1.digitalReadByte();
-    fl.ReadSensor = 0;
+    
     // // loadToHover();
     readHover();
-    // fl.ReadHover = 1;
-    // loadToMotor();
-    // readMotor();
-    // fl.ReadMotor = 1;
+    
 }
