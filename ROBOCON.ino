@@ -162,12 +162,12 @@ void setup()
     if (!pcf1.begin(addressPCF, &Wire)) {
         Serial.println("Couldn't find PCF8574 1");
     }
-    if (!pcf1.begin(addressPCF2, &Wire)) {
-        Serial.println("Couldn't find PCF8574 1");
-    }
+    // if (!pcf1.begin(addressPCF2, &Wire)) {
+    //     Serial.println("Couldn't find PCF8574 1");
+    // }
     for (uint8_t p = 0; p < 8; p++) {
         pcf1.pinMode(p, INPUT_PULLUP);
-        pcf2.pinMode(p, OUTPUT);
+        //pcf2.pinMode(p, OUTPUT);
     }
     pinMode(ESP_IRQ, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ESP_IRQ), readSensor, FALLING);
@@ -306,10 +306,10 @@ void pressTypeButton(PS2X ps2x, byte type) {
 
     if (ps2x.NewButtonState()) {
         if (ps2x.Button(PSB_R3)) {
-            //Code here 
-            gear++;
-            gear= gear%5;
-            loadToMB(3, 1, 1, SpFi/4*gear);
+            // //Code here 
+            // gear++;
+            // gear= gear%5;
+            // loadToMB(3, 1, 1, SpFi/4*gear);
         }
         if (ps2x.Button(PSB_PAD_RIGHT)) {
             if(maxSteer + STEER_STEP <= STEER_MAX) {
@@ -340,6 +340,7 @@ void pressTypeButton(PS2X ps2x, byte type) {
                 SpFi += 100;
             }
             else SpFi = 9999;
+            loadToMB(3, 1, 0, SpFi);
         }
         if (ps2x.Button(PSB_CIRCLE)) {
             Serial.println("10");
@@ -349,6 +350,7 @@ void pressTypeButton(PS2X ps2x, byte type) {
                 SpFi -= 100;
             }
             else  SpFi = -9999;
+            loadToMB(3, 1, 0, SpFi);
         }
         if (ps2x.Button(PSB_SQUARE)) {
             Serial.println("12");
