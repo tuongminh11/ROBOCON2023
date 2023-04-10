@@ -95,8 +95,8 @@ uint16_t gearSteer[4] = {30, 40, 50, 60};
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 //biến PCF
-const uint8_t addressPCF = 0x38;  //PCF trên
-const uint8_t addressPCF2 = 0x39; //PCF dưới
+const uint8_t addressPCF = 0x20;  //PCF trên
+const uint8_t addressPCF2 = 0x21; //PCF dưới
 const uint8_t ESP_IRQ = 27;  //, ESP_IRQ2 = 11; // ngắt của readsensor
 Adafruit_PCF8574 pcf1, pcf2;
 uint8_t sensorState[2];
@@ -175,10 +175,10 @@ void setup()
 //                     1);          /* pin task to core 1 */
     // PCF8574
     if (!pcf1.begin(addressPCF, &Wire)) {
-        Serial.println("Couldn't find PCF8574 1");
+        //Serial.println("Couldn't find PCF8574 1");
     }
     if (!pcf2.begin(addressPCF2, &Wire)) {
-        Serial.println("Couldn't find PCF8574 2");
+        //Serial.println("Couldn't find PCF8574 2");
     }
     for (uint8_t p = 0; p < 8; p++) {
         pcf1.pinMode(p, INPUT_PULLUP);
@@ -212,7 +212,7 @@ void setup()
     tft.init(320, 240); 
     tft.fillScreen(ST77XX_WHITE);
     tft.setRotation(3);
-    tft.drawRGBBitmap(270, 0, robocon2023, 50, 50);
+    tft.drawRGBBitmap(250, 0, robocon2023, 50, 50);
     tft.setTextSize(2);
     tft.setTextColor(ST77XX_BLACK);
     tft.setCursor(2, 30);
@@ -224,6 +224,7 @@ void setup()
     tft.setCursor(2, 90);
     tft.print("maxst "); 
     tft.setCursor(2, 110);
+    tft.print(sensorState[0], BIN);
     tft.setCursor(2, 130);
     tft.setCursor(2, 150);
     tft.println("Sp Rt: ");         
@@ -256,7 +257,6 @@ void setup()
     loadToMB(4, 1, 0, 0);
     loadToMB(5, 1, 0, 0);
     loadToMB(6, 1, 0, 0);
-
 }
 
 void readMB() {
@@ -301,28 +301,28 @@ void pressTypeButton(PS2X ps2x, byte type) {
         setSpeed = 0;
         setSteer += 10;
         if(setSteer >= maxSteer) { setSteer = maxSteer;}
-        Serial.println("1");
+        //Serial.println("1");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_UP)) {
         setSteer = 0;
         setSpeed += 30;
         if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
-        Serial.println("2");
+        //Serial.println("2");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_DOWN)) {
         setSpeed -= 30;
         if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
         setSteer = 0;//MAXSTEER;
-        Serial.println("3");
+        //Serial.println("3");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_LEFT)) {
         setSpeed = 0;
         setSteer -= 10;
         if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
-        Serial.println("4");
+        //Serial.println("4");
         pad = 1;
     }  
     
@@ -345,9 +345,12 @@ void pressTypeButton(PS2X ps2x, byte type) {
         else SpFi = 999;
         loadToMB(3, 1, 0, SpFi);
         loadToMB(4, 1, 0, SpFi);
+        tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
+        tft.setCursor(70,170);
+        tft.print(SpFi);
     }
     if (ps2x.ButtonPressed(PSB_CROSS)) {
-        Serial.println("10");
+        //Serial.println("10");
         gear++;
         gear= gear%4;
         maxSpeed = gearSpeed[gear];
@@ -371,7 +374,7 @@ void pressTypeButton(PS2X ps2x, byte type) {
         tft.print(SpFi);
     }
     if (ps2x.ButtonPressed(PSB_SQUARE)) {
-        Serial.println("12");
+        //Serial.println("12");
         if(!(sensorState[0] & 0b00010000)) {
             setRelay(0, 1, 1);
         }
@@ -508,6 +511,7 @@ void loop() {
         tft.setCursor(2, 110);
         tft.fillRect(2, 110, 120, 20, ST77XX_WHITE);
         tft.print(sensorState[0], BIN);
+        Serial.println(sensorState[0], BIN);
         if((prvSensor[0] & 0b00000100) && !(sensorState[0] & 0b00000100)) loadToMB(1, 0, 0, 0);
         if((prvSensor[0] & 0b00001000) && !(sensorState[0] & 0b00001000)) loadToMB(1, 0, 0, 0);
         if((prvSensor[0] & 0b00000010) && !(sensorState[0] & 0b00000010)) loadToMB(6, 0, 0, 0);
