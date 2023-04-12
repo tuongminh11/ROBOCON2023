@@ -131,8 +131,8 @@ uint8_t motorIN; //stt motor
 uint8_t enIN; //on off
 uint8_t pidIN; //
 int16_t speedIN;//999
-int16_t SpUp = 500; //speed Up
-int16_t SpRt = 500; //speed Rotate
+int16_t SpUp = 700; //speed Up
+int16_t SpRt = 999; //speed Rotate
 int16_t SpFi = 0;//speed fire
 int16_t SpPu = 500; //speed pull
 uint8_t gear = 0;
@@ -251,12 +251,12 @@ void setup()
     pidIN = 1;
     enIN = 1;
     motorIN = 1;
-    loadToMB(1, 1, 0, 0);
-    loadToMB(2, 1, 0, 0);
-    loadToMB(3, 1, 0, 0);
-    loadToMB(4, 1, 0, 0);
-    loadToMB(5, 1, 0, 0);
-    loadToMB(6, 1, 0, 0);
+    loadToMB(1, 0, 0, 0);
+    loadToMB(2, 0, 0, 0);
+    loadToMB(3, 0, 0, 0);
+    loadToMB(4, 0, 0, 0);
+    loadToMB(5, 0, 0, 0);
+    loadToMB(6, 0, 0, 0);
 }
 
 void readMB() {
@@ -326,17 +326,17 @@ void pressTypeButton(PS2X ps2x, byte type) {
         pad = 1;
     }  
     
-    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) loadToMB(1, 1, 0, -SpUp, 255);
-    if(ps2x.ButtonReleased(PSB_R2)) loadToMB(1, 1, 0, 0);
+    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) loadToMB(1, 1, 0, -999, 255);
+    if(ps2x.ButtonReleased(PSB_R2)) loadToMB(1, 0, 0, 0);
 
-    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000))) loadToMB(1, 1, 0, SpUp, 255);
-    if(ps2x.ButtonReleased(PSB_R1)) loadToMB(1, 1, 0, 0);
+    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000) && !(sensorState[0] & 0b01000000))) loadToMB(1, 1, 0, SpUp, 255);
+    if(ps2x.ButtonReleased(PSB_R1)) loadToMB(1, 0, 0, 0);
 
     if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & 0b00000001))) loadToMB(6, 1, 0, -SpRt, 255);
-    if(ps2x.ButtonReleased(PSB_L2)) loadToMB(6, 1, 0, 0);
+    if(ps2x.ButtonReleased(PSB_L2)) loadToMB(6, 0, 0, 0);
 
     if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & 0b00000010))) loadToMB(6, 1, 0, SpRt, 255);
-    if(ps2x.ButtonReleased(PSB_L1)) loadToMB(6, 1, 0, 0);
+    if(ps2x.ButtonReleased(PSB_L1)) loadToMB(6, 0, 0, 0);
 
     if (ps2x.ButtonPressed(PSB_TRIANGLE)){
         if(SpFi + 100 <= 999) {
@@ -454,6 +454,7 @@ void lcd() {
 
 unsigned long last = 0;
 unsigned long lastOfLCD = 0;
+unsigned long delayForMotor = 0;
 
 //Task1code
 // void Task1code( void * pvParameters ){
@@ -512,14 +513,17 @@ void loop() {
         tft.fillRect(2, 110, 120, 20, ST77XX_WHITE);
         tft.print(sensorState[0], BIN);
         Serial.println(sensorState[0], BIN);
+        if((prvSensor[0] & 0b00100000) && !(sensorState[0] & 0b00100000)) setRelay(0, 1, 2);
+        if((prvSensor[0] & 0b00010000) && !(sensorState[0] & 0b00010000)) {
+            setRelay(0, 1, 0);
+        }
+        if(!(prvSensor[0] & 0b01000000) && (sensorState[0] & 0b01000000)) loadToMB(1, 0, 0, 0);     //0 -> 1
         if((prvSensor[0] & 0b00000100) && !(sensorState[0] & 0b00000100)) loadToMB(1, 0, 0, 0);
         if((prvSensor[0] & 0b00001000) && !(sensorState[0] & 0b00001000)) loadToMB(1, 0, 0, 0);
         if((prvSensor[0] & 0b00000010) && !(sensorState[0] & 0b00000010)) loadToMB(6, 0, 0, 0);
-        if((prvSensor[0] & 0b00000001) && !(sensorState[0] & 0b00000001)) loadToMB(6, 0, 0, 0);
-        if((prvSensor[0] & 0b00100000) && !(sensorState[0] & 0b00100000)) setRelay(0, 1, 2);
-        if((prvSensor[0] & 0b00010000) && !(sensorState[0] & 0b00010000)) setRelay(0, 1, 0);        
+        if((prvSensor[0] & 0b00000001) && !(sensorState[0] & 0b00000001)) loadToMB(6, 0, 0, 0);      
         fl.ReadSensor = 0;
-    //Serial.println(sensorState[0], BIN);
+        //Serial.println(sensorState[0], BIN);
     }
     if(type_R == 1 || type_W == 1){
         pad = 0;
