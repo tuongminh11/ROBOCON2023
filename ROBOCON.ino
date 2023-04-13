@@ -1,4 +1,3 @@
-
 #include <PS2X_lib.h>
 #include <Adafruit_PCF8574.h>
 #include <SoftwareSerial.h>
@@ -102,8 +101,6 @@ Adafruit_PCF8574 pcf1, pcf2;
 uint8_t sensorState[2];
 uint8_t prvSensor[2];
 
-
-
 //PS2
 PS2X ps2x_R; // create PS2 1
 PS2X ps2x_W; //PS2 2
@@ -136,12 +133,13 @@ int16_t SpRt = 999; //speed Rotate
 int16_t SpFi = 0;//speed fire
 int16_t SpPu = 500; //speed pull
 uint8_t gear = 0;
+uint8_t up;
+uint8_t rt;
 
 //Hàm ngắt
 void IRAM_ATTR readSensor() {
     fl.ReadSensor = 1;
 }
-
 
 void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed, uint8_t acc = 20) {
     command.Start = 0xABCD;
@@ -156,23 +154,7 @@ void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed, uint8_t a
 void setup()
 {
     Serial.begin(115200);
-//   xTaskCreatePinnedToCore(
-//                     Task1code,   /* Task function. */
-//                     "Task1",     /* name of task. */
-//                     100000,       /* Stack size of task */
-//                     NULL,        /* parameter of the task */
-//                     1,           /* priority of the task */
-//                     &Task1,      /* Task handle to keep track of created task */
-//                     0);          /* pin task to core 0 */                  
-//   //create a task that will be executed in the Task2code() function, with priority 1 and executed on core 1
-//   xTaskCreatePinnedToCore(
-//                     Task2code,   /* Task function. */
-//                     "Task2",     /* name of task. */
-//                     100000,       /* Stack size of task */
-//                     NULL,        /* parameter of the task */
-//                     1,           /* priority of the task */
-//                     &Task2,      /* Task handle to keep track of created task */
-//                     1);          /* pin task to core 1 */
+
     // PCF8574
     if (!pcf1.begin(addressPCF, &Wire)) {
         //Serial.println("Couldn't find PCF8574 1");
@@ -231,7 +213,7 @@ void setup()
     tft.setCursor(2, 170);
     tft.println("Sp Fi: "); 
     tft.setCursor(2, 190);
-    tft.println("Sp Pu: "); 
+    tft.println("Sp Up: "); 
     tft.setCursor(2, 210);
     tft.println("Gear : ");    
     tft.setCursor(2, 2);
@@ -256,7 +238,25 @@ void setup()
     loadToMB(3, 0, 0, 0);
     loadToMB(4, 0, 0, 0);
     loadToMB(5, 0, 0, 0);
-    loadToMB(6, 0, 0, 0);
+    loadToMB(6, 0, 0, 0);    
+    xTaskCreatePinnedToCore(
+                        Task1code,   /* Task function. */
+                        "Task1",     /* name of task. */
+                        10000,       /* Stack size of task */
+                        NULL,        /* parameter of the task */
+                        3,           /* priority of the task */
+                        &Task1,      /* Task handle to keep track of created task */
+                        0);          /* pin task to core 0 */                  
+    delay(500);
+    xTaskCreatePinnedToCore(
+                        Task2code,   /* Task function. */
+                        "Task2",     /* name of task. */
+                        10000,       /* Stack size of task */
+                        NULL,        /* parameter of the task */
+                        1,           /* priority of the task */
+                        &Task2,      /* Task handle to keep track of created task */
+                        1);          /* pin task to core 1 */
+    delay(500);
 }
 
 void readMB() {
@@ -296,48 +296,70 @@ void readMB() {
 }
 
 bool pad = 0;
-void pressTypeButton(PS2X ps2x, byte type) {
+
+void pressTypeButton(PS2X ps2x, byte type) {    
     if (ps2x.Button(PSB_PAD_RIGHT)) {
         setSpeed = 0;
         setSteer += 10;
         if(setSteer >= maxSteer) { setSteer = maxSteer;}
-        //Serial.println("1");
+        //Serial.println("pad_right");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_UP)) {
         setSteer = 0;
         setSpeed += 30;
         if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
-        //Serial.println("2");
+        //Serial.println("pad_up");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_DOWN)) {
         setSpeed -= 30;
         if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
         setSteer = 0;//MAXSTEER;
-        //Serial.println("3");
+        //Serial.println("pad_down");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_LEFT)) {
         setSpeed = 0;
         setSteer -= 10;
         if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
-        //Serial.println("4");
+        //Serial.println("pad_left");
         pad = 1;
     }  
     
-    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) loadToMB(1, 1, 0, -999, 255);
-    if(ps2x.ButtonReleased(PSB_R2)) loadToMB(1, 0, 0, 0);
+    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) {
+        loadToMB(1, 1, 0, -999, 255);
+        up = 0;
+    }
+    if(ps2x.ButtonReleased(PSB_R2)) {
+        loadToMB(1, 0, 0, 0);
+        up = 1;
+    }
+    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000) && !(sensorState[0] & 0b01000000))) {
+        loadToMB(1, 1, 0, SpUp, 255);
+        up = 2;
+    }
+    if(ps2x.ButtonReleased(PSB_R1)) {
+        loadToMB(1, 0, 0, 0);
+        up = 1;
+    }
+    if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & 0b00000001))) {
+        loadToMB(6, 1, 0, -SpRt, 255);
+        rt = 0;
+    }
+    if(ps2x.ButtonReleased(PSB_L2)) {
+        loadToMB(6, 0, 0, 0);
+        rt = 1;
+    }
 
-    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000) && !(sensorState[0] & 0b01000000))) loadToMB(1, 1, 0, SpUp, 255);
-    if(ps2x.ButtonReleased(PSB_R1)) loadToMB(1, 0, 0, 0);
-
-    if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & 0b00000001))) loadToMB(6, 1, 0, -SpRt, 255);
-    if(ps2x.ButtonReleased(PSB_L2)) loadToMB(6, 0, 0, 0);
-
-    if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & 0b00000010))) loadToMB(6, 1, 0, SpRt, 255);
-    if(ps2x.ButtonReleased(PSB_L1)) loadToMB(6, 0, 0, 0);
-
+    if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & 0b00000010))) {
+        loadToMB(6, 1, 0, SpRt, 255);
+        rt = 2;
+    }    
+    if(ps2x.ButtonReleased(PSB_L1)) {
+        loadToMB(6, 0, 0, 0);
+        rt = 1;
+    }
     if (ps2x.ButtonPressed(PSB_TRIANGLE)){
         if(SpFi + 100 <= 999) {
             SpFi += 100;
@@ -361,6 +383,9 @@ void pressTypeButton(PS2X ps2x, byte type) {
         tft.fillRect(70, 90, 50, 20, ST77XX_WHITE);
         tft.setCursor(70, 90);
         tft.print(maxSteer);//msteer
+        tft.fillRect(70, 210, 50, 20, ST77XX_WHITE);
+        tft.setCursor(70, 210);
+        tft.print(gear + 1);//nhiet do
     }
     if (ps2x.ButtonPressed(PSB_CIRCLE)) {
         if(SpFi - 100 >= -999) {
@@ -379,7 +404,6 @@ void pressTypeButton(PS2X ps2x, byte type) {
             setRelay(0, 1, 1);
         }
     }
-    
 }
 
 void loadToHover(int16_t uSteer, int16_t uSpeed)
@@ -393,8 +417,7 @@ void loadToHover(int16_t uSteer, int16_t uSpeed)
     Serial1.write((uint8_t *)&Command, sizeof(Command));
 }
 
-void processHoverboard(uint8_t data[4])
-{
+void processHoverboard(uint8_t data[4]) {
     uint8_t x = data[1];
     uint8_t y = data[0];
     setSpeed = map(y, 0, 255, maxSpeed, -maxSpeed);
@@ -438,15 +461,15 @@ void lcd() {
     tft.fillRect(70, 50, 50, 20, ST77XX_WHITE);
     tft.setCursor(70, 50);
     tft.print(setSteer);//steer
-    // tft.fillRect(70, 150, 50, 20, ST77XX_WHITE);
-    // tft.setCursor(70, 150);
-    // tft.print(SpRt);
+    tft.fillRect(70, 150, 50, 20, ST77XX_WHITE);
+    tft.setCursor(70, 150);
+    tft.print(rt);
     // tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
     // tft.setCursor(70,170);
     // tft.print(SpFi);
-    // tft.fillRect(70, 190, 50, 20, ST77XX_WHITE);
-    // tft.setCursor(70,190);
-    // tft.print(SpPu);
+    tft.fillRect(70, 190, 50, 20, ST77XX_WHITE);
+    tft.setCursor(70,190);
+    tft.print(up);
     // tft.fillRect(70, 210, 50, 20, ST77XX_WHITE);
     // tft.setCursor(70,210);
     // tft.print(gear);//nhiet do
@@ -455,56 +478,35 @@ void lcd() {
 unsigned long last = 0;
 unsigned long lastOfLCD = 0;
 unsigned long delayForMotor = 0;
+void loop() {
+
+}
 
 //Task1code
-// void Task1code( void * pvParameters ){
-//     for(;;){
-//     mpu.getEvent(&a, &g, &temp);
-//     if (fl.ReadSensor == 1){
-//         prvSensor[0] = sensorState[0];
-//         sensorState[0] = pcf1.digitalReadByte();
-//         if((prvSensor[0] & 0b00000100) && !(sensorState[0] & 0b00000100)) loadToMB(1, 1, 0, 0);
-//         if((prvSensor[0] & 0b00001000) && !(sensorState[0] & 0b00001000)) loadToMB(1, 1, 0, 0);
-//         if((prvSensor[0] & 0b00000010) && !(sensorState[0] & 0b00000010)) loadToMB(6, 1, 0, 0);
-//         if((prvSensor[0] & 0b00000001) && !(sensorState[0] & 0b00000001)) loadToMB(6, 1, 0, 0);
-//         if((prvSensor[0] & 0b00100000) && !(sensorState[0] & 0b00100000)) setRelay(0, 1, 2);
-//         if((prvSensor[0] & 0b00010000) && !(sensorState[0] & 0b00010000)) setRelay(0, 1, 0);        
-//         fl.ReadSensor = 0;
-//     //Serial.println(sensorState[0], BIN);
-//     }
-//     if(type_R == 1 || type_W == 1){
-//         pad = 0;
-//         ps2x_R.read_gamepad(false, vibrate);
-//         ps2x_W.read_gamepad(false, vibrate);
-//         readController();
-//         if(type_R == 1) {
-//             pressTypeButton(ps2x_R, type_R);
-//         }
-//         if(type_W == 1){
-//             pressTypeButton(ps2x_W, type_W);
-//     }
-//     }
-//     }
-// }
+void Task1code( void * pvParameters ){
+    for(;;){
+    unsigned long time1 = millis();
+    if(type_R == 1 || type_W == 1){
+        pad = 0;
+        ps2x_R.read_gamepad(false, vibrate);
+        ps2x_W.read_gamepad(false, vibrate);
+        readController();
+        if(type_R == 1) {
+            pressTypeButton(ps2x_R, type_R);
+        }
+        if(type_W == 1){
+            pressTypeButton(ps2x_W, type_W);
+        }
+    }
+    if(pad == 0) processHoverboard(controllerData0);
+    unsigned long time2 = millis();
+    //Serial.println(time2 - time1);
+    }
+}
 
-// //Task2code
-// void Task2code( void * pvParameters ){
-//     for(;;){
-//     unsigned long now = millis();
-//     if(pad == 0) processHoverboard(controllerData0);
-//     if (now - last >= 100)
-//     {   
-//         last = now;    
-//         loadToHover(-setSpeed, setSteer);
-//     }
-//     if (millis() - lastOfLCD >= 100){
-//         lastOfLCD = millis();
-//         lcd();
-//     }
-//     }
-// }
-
-void loop() {
+//Task2code
+void Task2code( void * pvParameters ){
+    for(;;){
     mpu.getEvent(&a, &g, &temp);
     if (fl.ReadSensor == 1){
         prvSensor[0] = sensorState[0];
@@ -512,7 +514,7 @@ void loop() {
         tft.setCursor(2, 110);
         tft.fillRect(2, 110, 120, 20, ST77XX_WHITE);
         tft.print(sensorState[0], BIN);
-        Serial.println(sensorState[0], BIN);
+        //Serial.println(sensorState[0], BIN);
         if((prvSensor[0] & 0b00100000) && !(sensorState[0] & 0b00100000)) setRelay(0, 1, 2);
         if((prvSensor[0] & 0b00010000) && !(sensorState[0] & 0b00010000)) {
             setRelay(0, 1, 0);
@@ -525,20 +527,9 @@ void loop() {
         fl.ReadSensor = 0;
         //Serial.println(sensorState[0], BIN);
     }
-    if(type_R == 1 || type_W == 1){
-        pad = 0;
-        ps2x_R.read_gamepad(false, vibrate);
-        ps2x_W.read_gamepad(false, vibrate);
-        readController();
-        if(type_R == 1) {
-            pressTypeButton(ps2x_R, type_R);
-        }
-        if(type_W == 1){
-            pressTypeButton(ps2x_W, type_W);
-    }
-    }
+    
     unsigned long now = millis();
-    if(pad == 0) processHoverboard(controllerData0);
+    
     if (now - last >= 100)
     {   
         last = now;    
@@ -550,4 +541,7 @@ void loop() {
         lastOfLCD = millis();
         lcd();
     }
+    }
 }
+
+
