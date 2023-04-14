@@ -51,10 +51,12 @@ typedef struct {
 struct Motor_Command{
 	uint16_t Start ; //0xABCD
 	uint8_t Motor; //stt motor i=1-6, config PID i+10
-	uint8_t on; //on off
-	uint8_t PID; //
-	int16_t Value;//999
-	uint8_t Checksum;
+	uint8_t On; //on off
+	uint8_t PID; //a
+  
+	int16_t Value;//1000
+	uint8_t Acc;
+  uint8_t Checksum;
 };
 
 struct Motor_Feedback {
@@ -67,6 +69,7 @@ struct Motor_Feedback {
     int16_t speed1;
     int16_t speed2;
     int16_t speed3;
+    uint8_t Checksum;
 };
 
 struct Flag {
@@ -78,7 +81,7 @@ SerialCommand Command;
 
 uint8_t idx = 0;        // Index for new data pointer
 uint16_t bufStartFrame; // Buffer Start Frame
-byte *p;                // Pointer declaration for the new received data
+uint8_t *p;                // Pointer declaration for the new received data
 byte incomingByte;
 byte incomingBytePrev;
 
@@ -127,9 +130,9 @@ Motor_Feedback feedback, newFeedback;
 uint8_t motorIN; //stt motor
 uint8_t enIN; //on off
 uint8_t pidIN; //
-int16_t speedIN;//999
+int16_t speedIN;//1000
 int16_t SpUp = 700; //speed Up
-int16_t SpRt = 999; //speed Rotate
+int16_t SpRt = 1000; //speed Rotate
 int16_t SpFi = 0;//speed fire
 int16_t SpPu = 500; //speed pull
 uint8_t gear = 0;
@@ -144,11 +147,19 @@ void IRAM_ATTR readSensor() {
 void loadToMB(uint8_t motor, uint8_t EN, uint8_t pidEN, int16_t speed, uint8_t acc = 20) {
     command.Start = 0xABCD;
     command.Motor = motor;
-    command.on = EN;
+    command.On = EN;
     command.PID = pidEN;
     command.Value = speed;
-    command.Checksum = acc;
-    Serial2.write((uint8_t *)&command, sizeof(command));
+    command.Acc = acc;
+
+    uint8_t buffer[sizeof(command)];
+    memcpy(buffer, (uint8_t*) &command, sizeof(command));
+    uint8_t checksum = 0;
+    for(int i= 0; i < sizeof(command) - 1; i++){
+      checksum += buffer[i];
+    }
+    buffer[sizeof(command) - 1] = ~checksum + 1;
+    Serial2.write(buffer, sizeof(command));
 }
 
 void setup()
@@ -228,7 +239,7 @@ void setup()
     mpu.begin();
 
     //stm32
-    Serial2.begin(9600);
+    Serial2.begin(115200);
     speedIN = 0;
     pidIN = 1;
     enIN = 1;
@@ -278,17 +289,25 @@ void readMB() {
         idx++;
     }
     
+    
     if (idx == sizeof(Motor_Feedback)) {
-        if(newFeedback.Start == START_FRAME) {
+        uint8_t checksum  = 0;
+        uint8_t* ptr = (uint8_t*) &newFeedback ;
+        for(uint8_t i = 0; i < sizeof(Motor_Feedback) - 4; i++){
+          checksum += *ptr++;
+        }
+        checksum = ~checksum + 1;
+        if(checksum == newFeedback.Checksum) {
             memcpy(&feedback, &newFeedback, sizeof(Motor_Feedback));
-            // Serial.print("encoder 0: "); Serial.println(feedback.encoder0);
-            // Serial.print("encoder 1: "); Serial.println(feedback.encoder1);
-            // Serial.print("encoder 2: "); Serial.println(feedback.encoder2);
-            // Serial.print("encoder 3: "); Serial.println(feedback.encoder3);
-            // Serial.print("speed 0: "); Serial.println(feedback.speed0);
-            // Serial.print("speed 1: "); Serial.println(feedback.speed1);
-            // Serial.print("speed 2: "); Serial.println(feedback.speed2);
-            // Serial.print("speed 3: "); Serial.println(feedback.speed3);
+            //  Serial.print("encoder 0: "); Serial.println(feedback.encoder0);
+            //  Serial.print("encoder 1: "); Serial.println(feedback.encoder1);
+            //  Serial.print("encoder 2: "); Serial.println(feedback.encoder2);
+            //  Serial.print("encoder 3: "); Serial.println(feedback.encoder3);
+            //  Serial.print("speed 0: "); Serial.println(feedback.speed0);
+            //  Serial.print("speed 1: "); Serial.println(feedback.speed1);
+            //  Serial.print("speed 2: "); Serial.println(feedback.speed2);
+            //  Serial.print("speed 3: "); Serial.println(feedback.speed3);
+            //  Serial.print("checksum: "); Serial.println(checksum);
         }
         idx = 0;
     }
@@ -328,7 +347,7 @@ void pressTypeButton(PS2X ps2x, byte type) {
     }  
     
     if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) {
-        loadToMB(1, 1, 0, -999, 255);
+        loadToMB(1, 1, 0, -1000, 255);
         up = 0;
     }
     if(ps2x.ButtonReleased(PSB_R2)) {
@@ -361,10 +380,10 @@ void pressTypeButton(PS2X ps2x, byte type) {
         rt = 1;
     }
     if (ps2x.ButtonPressed(PSB_TRIANGLE)){
-        if(SpFi + 100 <= 999) {
+        if(SpFi + 100 <= 1000) {
             SpFi += 100;
         }
-        else SpFi = 999;
+        else SpFi = 1000;
         loadToMB(3, 1, 0, SpFi);
         loadToMB(4, 1, 0, SpFi);
         tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
@@ -388,10 +407,10 @@ void pressTypeButton(PS2X ps2x, byte type) {
         tft.print(gear + 1);//nhiet do
     }
     if (ps2x.ButtonPressed(PSB_CIRCLE)) {
-        if(SpFi - 100 >= -999) {
+        if(SpFi - 100 >= -1000) {
             SpFi -= 100;
         }
-        else  SpFi = -999;
+        else  SpFi = -1000;
         loadToMB(3, 1, 0, SpFi);
         loadToMB(4, 1, 0, SpFi);
         tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
@@ -543,5 +562,3 @@ void Task2code( void * pvParameters ){
     }
     }
 }
-
-
