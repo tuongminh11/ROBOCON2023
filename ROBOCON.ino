@@ -107,8 +107,8 @@ uint8_t prvSensor[2];
 //PS2
 PS2X ps2x_R; // create PS2 1
 PS2X ps2x_W; //PS2 2
-uint8_t controllerData0[4];
-uint8_t controllerData1[4];
+uint8_t controllerData0[4] = {128};
+uint8_t controllerData1[4] = {128};
 
 int error1 = -1;
 int error2 = -1;
@@ -451,10 +451,10 @@ void readController()
         controllerData0[2] = ps2x_R.Analog(PSS_RY);
         controllerData0[3] = ps2x_R.Analog(PSS_RX);
         
-        controllerData1[0] = ps2x_W.Analog(PSS_LY);
-        controllerData1[1] = ps2x_W.Analog(PSS_LX);
-        controllerData1[2] = ps2x_W.Analog(PSS_RY);
-        controllerData1[3] = ps2x_W.Analog(PSS_RX);
+        // controllerData1[0] = ps2x_W.Analog(PSS_LY);
+        // controllerData1[1] = ps2x_W.Analog(PSS_LX);
+        // controllerData1[2] = ps2x_W.Analog(PSS_RY);
+        // controllerData1[3] = ps2x_W.Analog(PSS_RX);
 }
 
 void setRelay(uint8_t pinA, uint8_t pinB, uint8_t St) {
@@ -505,19 +505,20 @@ void loop() {
 void Task1code( void * pvParameters ){
     for(;;){
     unsigned long time1 = millis();
-    if(type_R == 1 || type_W == 1){
-        pad = 0;
-        ps2x_R.read_gamepad(false, vibrate);
-        ps2x_W.read_gamepad(false, vibrate);
+    // if(type_R == 1 || type_W == 1){
+    pad = 0;
+    ps2x_R.read_gamepad(false, vibrate);
+    // ps2x_W.read_gamepad(false, vibrate);
+    
+    if(type_R == 1) {
+        pressTypeButton(ps2x_R, type_R);
         readController();
-        if(type_R == 1) {
-            pressTypeButton(ps2x_R, type_R);
-        }
-        if(type_W == 1){
-            pressTypeButton(ps2x_W, type_W);
-        }
+        if(pad == 0) processHoverboard(controllerData0);
     }
-    if(pad == 0) processHoverboard(controllerData0);
+    // if(type_W == 1){
+    //     pressTypeButton(ps2x_W, type_W);
+    // }
+    // }
     unsigned long time2 = millis();
     //Serial.println(time2 - time1);
     }
