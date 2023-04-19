@@ -8,6 +8,9 @@
 #include <Wire.h>
 #include "roboconIcon.h"
 
+// Thay doi tham so dieu khien xe
+#define GIATOCSPEED 15
+#define GIATOCSTEER 10
 //Hoverboard
 #define HOVER_SERIAL_BAUD 115200 // [-] Baud rate for HoverSerial (used to communicate with the hoverboard)
 #define SERIAL_BAUD 115200       // [-] Baud rate for built-in Serial (used for the Serial Monitor)
@@ -26,6 +29,22 @@
 #define TFT_CS    5    
 #define TFT_RST   15    
 #define TFT_DC    14
+
+//MB
+const int UP_MOTOR = 1;
+const int RT_MOTOR = 2;
+const int FIRE_1   = 4;
+const int FIRE_2   = 5;
+const int PULL_MOTOR = 3;
+
+#define UP_HL    3
+#define UP_LL    2
+#define RT_HL    1
+#define RT_LL    0
+#define RING_SS  6
+#define FIRE_HL  5
+#define FIRE_LL  4
+
 
 //struct hoverboard
 typedef struct {
@@ -73,8 +92,8 @@ struct Motor_Feedback {
 };
 
 struct Flag {
-    bool ReadMotor, ReadHover, ReadSensor, ReadNUC, ReadController, Relay;
-} fl = {0, 0, 1, 0, 0, 0};
+    bool ReadMotor, ReadHover, ReadSensor, ReadNUC, ReadController, Relay, stopPull;
+} fl = {0, 0, 1, 0, 0, 0, 0};
 
 //Biến trung gian hoverboard
 SerialCommand Command;
@@ -85,20 +104,22 @@ uint8_t *p;                // Pointer declaration for the new received data
 byte incomingByte;
 byte incomingBytePrev;
 
-int16_t setSpeed;
-int16_t setSteer;
+double setSpeed;
+double setSteer;
+double curSpeed;
+double curSteer;
 uint16_t maxSpeed;
 uint16_t maxSteer;
 
-uint16_t gearSpeed[4] = {100, 200, 250, 300};
-uint16_t gearSteer[4] = {30, 40, 50, 60};
+uint16_t gearSpeed[4] = {30, 50, 100, 150};
+// uint16_t gearSteer[4] = {30, 40, 50, 60};
 
 //object OLED
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 //biến PCF
 const uint8_t addressPCF = 0x20;  //PCF trên
-const uint8_t addressPCF2 = 0x21; //PCF dưới
+const uint8_t addressPCF2 = 0x39; //PCF dưới
 const uint8_t ESP_IRQ = 27;  //, ESP_IRQ2 = 11; // ngắt của readsensor
 Adafruit_PCF8574 pcf1, pcf2;
 uint8_t sensorState[2];
@@ -116,6 +137,9 @@ byte type_R = 0, type_W = 0;
 byte vibrate = 0;
 int tryNum = 1;
 
+// chu trinh ban
+byte chutrinhban = 0;
+
 //Dual Core
 TaskHandle_t Task1;
 TaskHandle_t Task2;
@@ -123,18 +147,18 @@ TaskHandle_t Task2;
 //Cảm biến 
 Adafruit_MPU6050 mpu;
 sensors_event_t a, g, temp;
-
+bool tftUpdate = 0;
 //Biến mạch công suất
 Motor_Command command;
 Motor_Feedback feedback, newFeedback;
 uint8_t motorIN; //stt motor
 uint8_t enIN; //on off
 uint8_t pidIN; //
-int16_t speedIN;//1000
-int16_t SpUp = 700; //speed Up
+int16_t speedIN;//1000B
+int16_t SpUp = 1000; //speed Up
 int16_t SpRt = 1000; //speed Rotate
-int16_t SpFi = 0;//speed fire
-int16_t SpPu = 500; //speed pull
+int16_t SpFi = 500;//speed fire
+int16_t SpPu = 1000; //speed pull
 uint8_t gear = 0;
 uint8_t up;
 uint8_t rt;
@@ -186,7 +210,7 @@ void setup()
     setSpeed = 0;
     setSteer = 0;
     maxSpeed = gearSpeed[0];
-    maxSteer = gearSteer[0];
+    maxSteer = maxSpeed / 3 + 5;
 
     // Controller
     delay(300);
@@ -244,12 +268,12 @@ void setup()
     pidIN = 1;
     enIN = 1;
     motorIN = 1;
-    loadToMB(1, 0, 0, 0);
+    loadToMB(UP_MOTOR, 0, 0, 0);
     loadToMB(2, 0, 0, 0);
-    loadToMB(3, 0, 0, 0);
-    loadToMB(4, 0, 0, 0);
+    loadToMB(FIRE_1, 0, 0, 0);
+    loadToMB(FIRE_2, 0, 0, 0);
     loadToMB(5, 0, 0, 0);
-    loadToMB(6, 0, 0, 0);    
+    loadToMB(RT_MOTOR, 0, 0, 0);    
     xTaskCreatePinnedToCore(
                         Task1code,   /* Task function. */
                         "Task1",     /* name of task. */
@@ -316,86 +340,90 @@ void readMB() {
 
 bool pad = 0;
 
-void pressTypeButton(PS2X ps2x, byte type) {    
+void pressTypeButton(PS2X ps2x, byte type) { 
+    setSpeed = 0;
+    setSteer = 0;   
+
     if (ps2x.Button(PSB_PAD_RIGHT)) {
-        setSpeed = 0;
-        setSteer += 10;
-        if(setSteer >= maxSteer) { setSteer = maxSteer;}
+        setSteer = maxSteer;
         //Serial.println("pad_right");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_UP)) {
-        setSteer = 0;
-        setSpeed += 30;
-        if(setSpeed >= maxSpeed) { setSpeed = maxSpeed;};
+        setSpeed = maxSpeed;
         //Serial.println("pad_up");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_DOWN)) {
-        setSpeed -= 30;
-        if(setSpeed <= -maxSpeed) { setSpeed =  -maxSpeed;};
-        setSteer = 0;//MAXSTEER;
+        setSpeed = -maxSpeed;
         //Serial.println("pad_down");
         pad = 1;
     }
     if (ps2x.Button(PSB_PAD_LEFT)) {
-        setSpeed = 0;
-        setSteer -= 10;
-        if(setSteer <= - maxSteer) { setSteer = -maxSteer;}
+        setSteer = -maxSteer;
         //Serial.println("pad_left");
         pad = 1;
     }  
     
-    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & 0b00000100))) {
-        loadToMB(1, 1, 0, -1000, 255);
+    if(ps2x.ButtonPressed(PSB_R2) && ((sensorState[0] & (1 << UP_LL)))) {
+        loadToMB(UP_MOTOR, 1, 0, -SpUp, 255);
         up = 0;
     }
     if(ps2x.ButtonReleased(PSB_R2)) {
-        loadToMB(1, 0, 0, 0);
+        loadToMB(UP_MOTOR, 0, 0, 0);
         up = 1;
     }
-    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & 0b00001000) && !(sensorState[0] & 0b01000000))) {
-        loadToMB(1, 1, 0, SpUp, 255);
+    if(ps2x.ButtonPressed(PSB_R1) && ((sensorState[0] & (1 << UP_HL)) && (sensorState[0] & (1 << RING_SS)))) {
+        loadToMB(UP_MOTOR, 1, 0, SpUp, 255);
         up = 2;
     }
     if(ps2x.ButtonReleased(PSB_R1)) {
-        loadToMB(1, 0, 0, 0);
+        loadToMB(UP_MOTOR, 0, 0, 0);
         up = 1;
     }
-    if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & 0b00000001))) {
-        loadToMB(6, 1, 0, -SpRt, 255);
+
+    if(ps2x.ButtonReleased(PSB_R3)) {
+        loadToMB(FIRE_1, 0, 0, 0);
+        loadToMB(FIRE_2, 0, 0, 0);
+        SpFi = 0;
+    }
+
+    if(ps2x.ButtonPressed(PSB_L2) && ((sensorState[0] & (1 << RT_LL)))) {
+        loadToMB(RT_MOTOR, 1, 0, -SpRt, 255);
         rt = 0;
     }
     if(ps2x.ButtonReleased(PSB_L2)) {
-        loadToMB(6, 0, 0, 0);
+        loadToMB(RT_MOTOR, 0, 0, 0);
         rt = 1;
     }
 
-    if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & 0b00000010))) {
-        loadToMB(6, 1, 0, SpRt, 255);
+    if(ps2x.ButtonPressed(PSB_L1) && ((sensorState[0] & (1 << RT_HL)))) {
+        loadToMB(RT_MOTOR, 1, 0, SpRt, 255);
         rt = 2;
     }    
     if(ps2x.ButtonReleased(PSB_L1)) {
-        loadToMB(6, 0, 0, 0);
+        loadToMB(RT_MOTOR, 0, 0, 0);
         rt = 1;
     }
     if (ps2x.ButtonPressed(PSB_TRIANGLE)){
-        if(SpFi + 100 <= 1000) {
-            SpFi += 100;
+        // if(SpFi <= 500) SpFi = 500;
+        if(SpFi == 0) SpFi = 750;
+        if(SpFi + 25 <= 850) {
+            SpFi += 25;
         }
-        else SpFi = 1000;
-        loadToMB(3, 1, 0, SpFi);
-        loadToMB(4, 1, 0, SpFi);
+        else SpFi = 850;
+        loadToMB(FIRE_1, 1, 0, SpFi);
+        loadToMB(FIRE_2, 1, 0, SpFi);
         tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
         tft.setCursor(70,170);
         tft.print(SpFi);
     }
-    if (ps2x.ButtonPressed(PSB_CROSS)) {
+    if (ps2x.ButtonPressed(PSB_CROSS)) {  // Thay doi toc do chay cua xe
         //Serial.println("10");
         gear++;
         gear= gear%4;
         maxSpeed = gearSpeed[gear];
-        maxSteer = gearSteer[gear];
+        maxSteer = maxSpeed / 3 + 5;
         tft.fillRect(70, 70, 50, 20, ST77XX_WHITE);
         tft.setCursor(70, 70);
         tft.print(maxSpeed);//mspeed
@@ -404,23 +432,24 @@ void pressTypeButton(PS2X ps2x, byte type) {
         tft.print(maxSteer);//msteer
         tft.fillRect(70, 210, 50, 20, ST77XX_WHITE);
         tft.setCursor(70, 210);
-        tft.print(gear + 1);//nhiet do
+        tft.print(gear + 1);//gear
     }
-    if (ps2x.ButtonPressed(PSB_CIRCLE)) {
-        if(SpFi - 100 >= -1000) {
-            SpFi -= 100;
+    if (ps2x.ButtonPressed(PSB_CIRCLE)) {  // Thay doi toc do ban
+        if(SpFi - 25 >= 750) {
+            SpFi -= 25;
         }
-        else  SpFi = -1000;
-        loadToMB(3, 1, 0, SpFi);
-        loadToMB(4, 1, 0, SpFi);
+        else if (SpFi != 0) SpFi = 750;
+        loadToMB(FIRE_1, 1, 0, SpFi);
+        loadToMB(FIRE_2, 1, 0, SpFi);
         tft.fillRect(70, 170, 50, 20, ST77XX_WHITE);
         tft.setCursor(70,170);
         tft.print(SpFi);
     }
-    if (ps2x.ButtonPressed(PSB_SQUARE)) {
+    if (ps2x.ButtonPressed(PSB_SQUARE)) {  // Nut day vong vao co cau ban
+        chutrinhban = 1;
         //Serial.println("12");
-        if(!(sensorState[0] & 0b00010000)) {
-            setRelay(0, 1, 1);
+        if(!(sensorState[0] & (1 << FIRE_LL))) {
+            loadToMB(PULL_MOTOR, 1, 0, SpPu, 255);
         }
     }
 }
@@ -457,21 +486,6 @@ void readController()
         // controllerData1[3] = ps2x_W.Analog(PSS_RX);
 }
 
-void setRelay(uint8_t pinA, uint8_t pinB, uint8_t St) {
-    if(St == 1) {
-        pcf2.digitalWrite(pinA, HIGH);
-        pcf2.digitalWrite(pinB, LOW);
-    }
-    if(St == 2) {
-        pcf2.digitalWrite(pinA, LOW);
-        pcf2.digitalWrite(pinB, HIGH);
-    }
-    if(St == 0) {
-        pcf2.digitalWrite(pinA, HIGH);
-        pcf2.digitalWrite(pinB, HIGH);
-    }
-}
-
 void lcd() {
     tft.setTextColor(ST77XX_BLACK);
     tft.fillRect(70, 30, 50, 20, ST77XX_WHITE);
@@ -495,6 +509,7 @@ void lcd() {
 }
 
 unsigned long last = 0;
+unsigned long now = 0;
 unsigned long lastOfLCD = 0;
 unsigned long delayForMotor = 0;
 void loop() {
@@ -510,17 +525,68 @@ void Task1code( void * pvParameters ){
     ps2x_R.read_gamepad(false, vibrate);
     // ps2x_W.read_gamepad(false, vibrate);
     
-    if(type_R == 1) {
+    if(type_R == 1) {  // Kiem tra tay cam la PS2 hay khong
         pressTypeButton(ps2x_R, type_R);
-        readController();
+        readController(); // Doc trang thai Joystick
         if(pad == 0) processHoverboard(controllerData0);
     }
     // if(type_W == 1){
     //     pressTypeButton(ps2x_W, type_W);
     // }
     // }
-    unsigned long time2 = millis();
+   // unsigned long time2 = millis();
     //Serial.println(time2 - time1);
+   
+     now = millis();
+    
+    if (now - last >= 100)
+    {   
+        last = now;
+        double differSpeed = setSpeed - curSpeed;
+        double differSteer = setSteer - curSteer;
+
+        //differ set - cur  
+        if(differSpeed >= GIATOCSPEED) {
+                curSpeed += GIATOCSPEED;
+        }
+        else if (differSpeed <= -GIATOCSPEED) {
+            if(setSpeed == 0) 
+            curSpeed -= GIATOCSPEED * 2;
+            else
+            curSpeed -= GIATOCSPEED;
+        }
+        else curSpeed = setSpeed;
+
+        if(differSteer >= GIATOCSTEER) {
+                curSteer += GIATOCSTEER;
+        }
+        else if (differSteer <= -GIATOCSTEER) {
+            if(setSteer == 0) 
+            curSteer -= GIATOCSTEER * 2;
+            else
+            curSteer -= GIATOCSTEER;
+        }
+        else curSteer = setSteer;
+
+        loadToHover((int)curSteer, (int)curSpeed);
+        
+    }
+    readMB();   // Doc motor board
+    
+    if (millis() - lastOfLCD >= 500){
+        lastOfLCD = millis();
+        lcd();
+    }
+    if (tftUpdate)
+
+    {
+        tft.setCursor(2, 110);
+    tft.fillRect(2, 110, 120, 20, ST77XX_WHITE);
+    tft.print(sensorState[0], BIN);
+    tftUpdate = 0;
+
+    }   
+    vTaskDelay(50); // 50 ms
     }
 }
 
@@ -531,35 +597,30 @@ void Task2code( void * pvParameters ){
     if (fl.ReadSensor == 1){
         prvSensor[0] = sensorState[0];
         sensorState[0] = pcf1.digitalReadByte();
-        tft.setCursor(2, 110);
-        tft.fillRect(2, 110, 120, 20, ST77XX_WHITE);
-        tft.print(sensorState[0], BIN);
+
         //Serial.println(sensorState[0], BIN);
-        if((prvSensor[0] & 0b00100000) && !(sensorState[0] & 0b00100000)) setRelay(0, 1, 2);
-        if((prvSensor[0] & 0b00010000) && !(sensorState[0] & 0b00010000)) {
-            setRelay(0, 1, 0);
+        if((chutrinhban == 1 )&& (prvSensor[0] & (1 << FIRE_HL)) && !(sensorState[0] & (1 << FIRE_HL))) { 
+            loadToMB(PULL_MOTOR, 0, 0, 0, 255);
+            vTaskDelay(10);
+            loadToMB(PULL_MOTOR, 1, 0, -SpPu, 255);
+            chutrinhban = 2 ;
         }
-        if(!(prvSensor[0] & 0b01000000) && (sensorState[0] & 0b01000000)) loadToMB(1, 0, 0, 0);     //0 -> 1
-        if((prvSensor[0] & 0b00000100) && !(sensorState[0] & 0b00000100)) loadToMB(1, 0, 0, 0);
-        if((prvSensor[0] & 0b00001000) && !(sensorState[0] & 0b00001000)) loadToMB(1, 0, 0, 0);
-        if((prvSensor[0] & 0b00000010) && !(sensorState[0] & 0b00000010)) loadToMB(6, 0, 0, 0);
-        if((prvSensor[0] & 0b00000001) && !(sensorState[0] & 0b00000001)) loadToMB(6, 0, 0, 0);      
+            // cam bien tren cham chay lui lai
+        if((chutrinhban == 2 )&&  (prvSensor[0] & (1 << FIRE_LL)) && !(sensorState[0] & (1 << FIRE_LL))) {//cam bien duoi cham dung dong co
+         //   loadToMB(PULL_MOTOR, 1, 0, 1000, 255);
+        //    vTaskDelay(20);
+             chutrinhban = 0 ;
+            loadToMB(PULL_MOTOR, 0 , 0 , 0, 255);
+
+        }
+        if((prvSensor[0] & (1 << RING_SS)) && !(sensorState[0] & (1 << RING_SS))) loadToMB(UP_MOTOR, 0, 0, 0);     //0 -> 1
+        if((prvSensor[0] & (1 << UP_LL)) && !(sensorState[0] & (1 << UP_LL))) loadToMB(UP_MOTOR, 0, 0, 0);
+        if((prvSensor[0] & (1 << UP_HL)) && !(sensorState[0] & (1 << UP_HL))) loadToMB(UP_MOTOR, 0, 0, 0);
+        if((prvSensor[0] & (1 << RT_HL)) && !(sensorState[0] & (1 << RT_HL))) loadToMB(RT_MOTOR, 0, 0, 0);
+        if((prvSensor[0] & (1 << RT_LL)) && !(sensorState[0] & (1 << RT_LL))) loadToMB(RT_MOTOR, 0, 0, 0);      
         fl.ReadSensor = 0;
+        tftUpdate = 1;
         //Serial.println(sensorState[0], BIN);
-    }
-    
-    unsigned long now = millis();
-    
-    if (now - last >= 100)
-    {   
-        last = now;    
-        loadToHover(-setSpeed, setSteer);
-        
-    }
-    readMB();
-    if (millis() - lastOfLCD >= 100){
-        lastOfLCD = millis();
-        lcd();
     }
     }
 }
